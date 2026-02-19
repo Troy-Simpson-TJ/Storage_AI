@@ -1,55 +1,55 @@
 """
 filesystem_sources.py
-- This module finds directories/roots that are good options to scan.
-- These options will appear in the Combobox inside the UI.
+Builds scan roots for the combobox.
 
-On Windows, we include:
-- Mounted drives (C:\, D:\, etc.)
-- Common user folders (Desktop, Downloads, Documents, etc.)
-
-We use psutil to list partitions (drives).
+Fix:
+Adds OneDrive redirected folders (Desktop/Documents/etc.) when present.
+This solves the "Desktop has nothing / doesn't scan" issue on many Windows PCs.
 """
 
 import os
 import psutil
 
 
+def _add_if_exists(roots: list, path: str):
+    """Helper: add a path if it exists and isn't already in the list."""
+    if path and os.path.exists(path) and path not in roots:
+        roots.append(path)
+
+
 def get_scan_roots():
-    """
-    Returns a list of scan root paths that exist on the computer.
-
-    Example Windows output:
-    [
-      "C:\\",
-      "D:\\",
-      "C:\\Users\\T\\Downloads",
-      "C:\\Users\\T\\Documents"
-    ]
-    """
-
     roots = []
 
-    # 1) Add all "normal" mounted partitions (drives)
-    #    psutil.disk_partitions(all=False) returns partition info.
+    # ------------------------------------------------------------
+    # 1) Drives / partitions (C:\, D:\, etc.)
+    # ------------------------------------------------------------
     for part in psutil.disk_partitions(all=False):
-        mountpoint = part.mountpoint  # e.g. "C:\\"
-        if mountpoint and os.path.exists(mountpoint):
-            roots.append(mountpoint)
+        mountpoint = part.mountpoint
+        _add_if_exists(roots, mountpoint)
 
-    # 2) Add common user folders (Windows style)
-    #    USERPROFILE is like "C:\\Users\\Troy"
-    userprofile = os.environ.get("USERPROFILE")
+    # ------------------------------------------------------------
+    # 2) User profile folders (local)
+    # ------------------------------------------------------------
+    userprofile = os.environ.get("USERPROFILE")  # e.g. C:\Users\tjsim
     if userprofile and os.path.exists(userprofile):
-        common_names = ["Desktop", "Downloads", "Documents", "Pictures", "Videos", "Music"]
-        for name in common_names:
-            path = os.path.join(userprofile, name)
-            if os.path.exists(path):
-                roots.append(path)
+        for name in ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music"]:
+            _add_if_exists(roots, os.path.join(userprofile, name))
 
-    # 3) Remove duplicates but keep order (stable de-dupe)
+    # ------------------------------------------------------------
+    # 3) OneDrive redirected folders (IMPORTANT on many PCs)
+    # ------------------------------------------------------------
+    onedrive = os.environ.get("OneDrive")  # e.g. C:\Users\tjsim\OneDrive
+    if onedrive and os.path.exists(onedrive):
+        for name in ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music"]:
+            _add_if_exists(roots, os.path.join(onedrive, name))
+
+    # ------------------------------------------------------------
+    # 4) Stable de-dupe (just in case)
+    # ------------------------------------------------------------
     seen = set()
     cleaned = []
     for r in roots:
+        r = os.path.abspath(r)
         if r not in seen:
             seen.add(r)
             cleaned.append(r)
